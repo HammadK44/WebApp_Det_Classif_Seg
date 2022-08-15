@@ -1,21 +1,20 @@
-import base64
-import os
-import uuid
 import io
-from io import BytesIO
 import numpy as np
 from PIL import Image
-
+from pydantic import BaseModel
+import json
 import uvicorn
-from fastapi import FastAPI, File, UploadFile
+from fastapi import FastAPI, File, UploadFile, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
-
 from starlette.responses import Response
 from segmentation import load_model, get_segments
 from classification import read_image, preprocess, predicti, load_model2
 from detection import process_image, annotate_image, load_model3
-#from batchclass import predict
+from batchclass import predict
+
+import sys
+from db import db
 
 
 
@@ -25,6 +24,8 @@ model3 = load_model3()
 
 app = FastAPI()
 
+
+
 @app.post("/segmentation")
 def get_segmentation_map(image: bytes = File(...)):
     segmented_image = get_segments(model1, image)
@@ -33,18 +34,18 @@ def get_segmentation_map(image: bytes = File(...)):
     return Response(bytes_io.getvalue(), media_type="image/png")
 
 
+#-------------------------------------------------------------------------------------------------------
 
 @app.post("/classification")
+#async def predict_image(file: UploadFile = File(...)):
 async def predict_image(file: bytes = File(...)):
     image = read_image(file)
     image = preprocess(image)
     predictions = predicti(image)
-    #byte_io = io.BytesIO()
-    #image.save(byte_io, format='PNG')
-    return {"Object Name": predictions}
-    #json_compatible_item_data = jsonable_encoder(predictions)
-    #return JSONResponse(content=json_compatible_item_data)
+    return predictions
 
+
+#-------------------------------------------------------------------------------------------------------
 
 
 @app.post("/detection")
@@ -57,20 +58,45 @@ async def get_detection(image: bytes = File(...)):
     byte_io = io.BytesIO()
     processed_image.save(byte_io, format='PNG')
     return Response(byte_io.getvalue(), media_type='image/png')
-    #byte_io = io.BytesIO()
-    #processed_image.save(byte_io, format='PNG')
-    #return Response(byte_io.getvalue(), media_type='image/png')
+
+
+#-------------------------------------------------------------------------------------------------------
+
+
+@app.post("/batchclassification")
+async def predict_image(request: Request):
+
+    getpath = 'YES'
+    x = db.collection_Batch.find_one({"GetPath": getpath})
+    x["_id"] = str(x["_id"])
+    x = str(x)
+    x = x.split("'", 12)
+    x = x[-2]
+
+    accuracy, loss, precision, recall, f1score = predict(x)
+
+    record_dict ={
+        "Dataset": x,
+        "Accuracy": accuracy,
+        "Loss": loss,
+        "Precision": precision,
+        "Recall": recall,
+        "F1Score": f1score
+        }
+
+    insertInTable= db.collection_Batch.insert_one(record_dict)
+
+    pass
 
 
 
+    #return {"Accuracy": accuracy, 
+    #        "Loss": loss, 
+    #        "Precision": precision, 
+    #        "Recall": recall, 
+    #        "F1Score": f1score}
 
-#IMAGE_SIZE = [224, 224]
 
-#train_path = './dataset/train'
-#test_path = './dataset/test'
-
-#@app.post("/batchclassif")
-#def predictbatch():
-#    accuracy, loss, precision, recall, f1score = predict(IMAGE_SIZE, train_path, test_path)
-#    return accuracy, loss, precision, recall, f1score 
     
+if __name__ == '__main__':                                  # Remove when Dockerizing
+    uvicorn.run(app, host='127.0.0.1', port=8000)
