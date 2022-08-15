@@ -1,5 +1,4 @@
 import tensorflow as tf
-
 from tensorflow.keras.layers import Input, Lambda, Dense, Flatten
 from tensorflow.keras.models import Model
 from tensorflow.keras.applications.vgg19 import VGG19
@@ -15,25 +14,25 @@ import warnings
 warnings.filterwarnings("ignore", category=FutureWarning)
 
 
-
-
-
-def predict(IMAGE_SIZE, train_path, test_path):
+def predict(test_path):
+    IMAGE_SIZE = [224, 224]
     vgg = VGG19(input_shape=IMAGE_SIZE + [3], weights='imagenet', include_top=False)
     vgg.input
 
 
     for layer in vgg.layers:
         layer.trainable = False
+    
+    #breakpoint()
 
-    folders = glob('./dataset/train/*')
-    print(len(folders))
+    folders = glob('./dataset/test/*')
+
 
 
     x = Flatten()(vgg.output)
     prediction = Dense(len(folders), activation='softmax')(x)
     model = Model(inputs=vgg.input, outputs=prediction)
-    model.summary()
+    #model.summary()
 
 
     from tensorflow.keras import optimizers
@@ -55,20 +54,6 @@ def predict(IMAGE_SIZE, train_path, test_path):
                     optimizer=adam,
                     metrics=['accuracy',tf.keras.metrics.Precision(), tf.keras.metrics.Recall(), F1_score])
 
-
-
-
-    train_datagen = ImageDataGenerator(
-            preprocessing_function=preprocess_input,
-            rotation_range=40,
-            width_shift_range=0.2,
-            height_shift_range=0.2,
-            shear_range=0.2,
-            zoom_range=0.2,
-            horizontal_flip=True,
-            fill_mode='nearest')
-
-
     test_datagen = ImageDataGenerator(
             preprocessing_function=preprocess_input,
             rotation_range=40,
@@ -79,45 +64,20 @@ def predict(IMAGE_SIZE, train_path, test_path):
             horizontal_flip=True,
             fill_mode='nearest')
 
-
-    train_set = train_datagen.flow_from_directory(train_path,
-                                                        target_size = (224, 224),
-                                                        batch_size = 8,
-                                                        class_mode = 'categorical')
-
-
-
-
     test_set = test_datagen.flow_from_directory(test_path,
                                                     target_size = (224, 224),
-                                                    batch_size = 8,
                                                     class_mode = 'categorical')
 
 
 
-    model_history=model.fit_generator(
-        train_set,
-        validation_data=test_set,
-        epochs=3,
-        steps_per_epoch=5,
-        validation_steps=8,verbose=2)
-
-
-    accuracy = model_history.history['accuracy']
-    loss = model_history.history['loss']
-    precision = model_history.history['recall']
-    recall = model_history.history['precision']
-    f1score = model_history.history['F1_score']
-
-    accuracy = accuracy[-1]
-    loss = loss[-1]
-    precision = precision[-1]
-    recall = recall[-1]
-    f1score = f1score[-1]
-
-    return accuracy, loss, precision, recall, f1score
+    numberofimages = test_set.samples
+    ev = model.evaluate_generator(test_set, numberofimages)
 
     
+    loss = ev[1]
+    accuracy = ev[0]
+    precision = ev[2]
+    recall = ev[3]
+    f1score = ev[4]
 
-
-
+    return loss, accuracy, precision, recall, f1score
